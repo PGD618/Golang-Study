@@ -42,7 +42,7 @@ func AddPerson() {
 		return
 	}
 
-	resp, err := http.Post("http://127.0.0.1:8080/add", "application/json",
+	resp, err := http.Post("http://47.97.57.12:8080/add", "application/json",
 		bytes.NewBuffer(jsonData))
 	if err != nil {
 		fmt.Println("请求失败！", err)
@@ -55,7 +55,7 @@ func AddPerson() {
 
 // 显示员工信息
 func ShowPerson() {
-	resp, err := http.Get("http://127.0.0.1:8080/show")
+	resp, err := http.Get("http://47.97.57.12:8080/show")
 	if err != nil {
 		fmt.Println("请求失败！", err)
 		return
@@ -87,7 +87,7 @@ func FindPerson() {
 	fmt.Println("请输入需要查找的员工姓名：")
 	fmt.Scanln(&name)
 
-	resp, err := http.Get("http://127.0.0.1:8080/find?name=" + name)
+	resp, err := http.Get("http://47.97.57.12:8080/find?name=" + name)
 	if err != nil {
 		fmt.Println("请求失败！", err)
 		return
@@ -118,7 +118,7 @@ func ModifyPerson() {
 	)
 	fmt.Println("请输入要修改信息的员工姓名：")
 	fmt.Scanln(&oldname)
-	resp, err := http.Get("http://127.0.0.1:8080/find?name=" + oldname)
+	resp, err := http.Get("http://47.97.57.12:8080/find?name=" + oldname)
 	if err != nil {
 		fmt.Println("查询员工信息失败！")
 		return
@@ -149,7 +149,7 @@ func ModifyPerson() {
 		fmt.Println("json编码失败！")
 		return
 	}
-	request, err := http.NewRequest("PUT", "http://127.0.0.1:8080/modify?name="+oldname,
+	request, err := http.NewRequest("PUT", "http://47.97.57.12/modify?name="+oldname,
 		bytes.NewBuffer(jsonData))
 	if err != nil {
 		fmt.Println("创建请求失败！", err)
@@ -173,7 +173,7 @@ func DeletePerson() {
 	fmt.Println("请输入要删除的员工姓名：")
 	fmt.Scanln(&name)
 
-	request, err := http.NewRequest("DELETE", "http://127.0.0.1:8080/delete?name="+name, nil)
+	request, err := http.NewRequest("DELETE", "http://47.97.57.12:8080/delete?name="+name, nil)
 	if err != nil {
 		fmt.Println("创建请求失败！", err)
 		return
@@ -192,7 +192,7 @@ func DeletePerson() {
 
 // 清空员工信息
 func ClearPerson() {
-	resp, err := http.Get("http://127.0.0.1:8080/clear")
+	resp, err := http.Get("http://47.97.57.12:8080/clear")
 	if err != nil {
 		fmt.Println("请求失败！", err)
 		return

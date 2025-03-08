@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -23,17 +24,24 @@ type Person struct {
 
 // 全局变量
 var (
-	db  *sql.DB
-	rdb *redis.Client
+	db     *sql.DB
+	rdb    *redis.Client
+	logger *log.Logger
 )
 
-// 初始化数据库
+// 初始化数据库和日志
 func init() {
+	// 初始化日志
+	logFile, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("无法打开日志文件：", err)
+	}
+	logger = log.New(logFile, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+
 	// 初始化 MySQL
-	var err error
 	db, err = sql.Open("mysql", "root:123abc@tcp(127.0.0.1:3306)/text")
 	if err != nil {
-		log.Println("MySQL 连接失败！", err)
+		logger.Println("MySQL 连接失败！", err)
 	}
 
 	db.SetMaxOpenConns(100)
@@ -42,9 +50,9 @@ func init() {
 
 	err = db.Ping()
 	if err != nil {
-		log.Println("MySQL 连接失败！", err)
+		logger.Println("MySQL 连接失败！", err)
 	}
-	fmt.Println("MySQL 连接成功！")
+	logger.Println("MySQL 连接成功！")
 
 	// 初始化 Redis
 	rdb = redis.NewClient(&redis.Options{
@@ -56,9 +64,9 @@ func init() {
 	ctx := context.Background()
 	_, err = rdb.Ping(ctx).Result()
 	if err != nil {
-		log.Println("Redis 连接失败！", err)
+		logger.Println("Redis 连接失败！", err)
 	}
-	fmt.Println("Redis 连接成功！")
+	logger.Println("Redis 连接成功！")
 }
 
 // 添加员工信息到 MySQL
@@ -121,16 +129,17 @@ func GetFromRedis(name string) (Person, error) {
 func AddPerson(w http.ResponseWriter, r *http.Request) {
 	var person Person
 	if err := json.NewDecoder(r.Body).Decode(&person); err != nil {
+		logger.Println("解析请求体失败：", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	go func(person Person) {
 		if err := InsertToMySQL(person); err != nil {
-			log.Println("数据存入 MySQL 失败！", err)
+			logger.Println("数据存入 MySQL 失败！", err)
 		}
 		if err := InsertToRedis(person); err != nil {
-			log.Println("数据存入 Redis 失败！", err)
+			logger.Println("数据存入 Redis 失败！", err)
 		}
 	}(person)
 
@@ -141,7 +150,8 @@ func AddPerson(w http.ResponseWriter, r *http.Request) {
 func ShowPerson(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT Name, Age, Sex, Number FROM employees")
 	if err != nil {
-		log.Println("查询失败！", err)
+		logger.Println("查询失败！", err)
+		http.Error(w, "查询失败！", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -151,7 +161,8 @@ func ShowPerson(w http.ResponseWriter, r *http.Request) {
 		var person Person
 		err := rows.Scan(&person.M_Name, &person.M_Age, &person.M_Sex, &person.M_Number)
 		if err != nil {
-			log.Println("解析数据失败！", err)
+			logger.Println("解析数据失败！", err)
+			http.Error(w, "解析数据失败！", http.StatusInternalServerError)
 			return
 		}
 		persons = append(persons, person)
@@ -183,7 +194,7 @@ func FindPerson(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := InsertToRedis(person); err != nil {
-			log.Println("数据写入 Redis 失败！", err)
+			logger.Println("数据写入 Redis 失败！", err)
 		}
 
 		resultChan <- person
@@ -197,6 +208,7 @@ func FindPerson(w http.ResponseWriter, r *http.Request) {
 		if err == sql.ErrNoRows {
 			http.Error(w, "没有找到相关信息！", http.StatusNotFound)
 		} else {
+			logger.Println("查询失败：", err)
 			http.Error(w, "查询失败！", http.StatusInternalServerError)
 		}
 	case <-time.After(2 * time.Second):
@@ -214,6 +226,7 @@ func ModifyPerson(w http.ResponseWriter, r *http.Request) {
 
 	var person Person
 	if err := json.NewDecoder(r.Body).Decode(&person); err != nil {
+		logger.Println("解析请求体失败：", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -223,13 +236,13 @@ func ModifyPerson(w http.ResponseWriter, r *http.Request) {
 		_, err := db.Exec(query, person.M_Name, person.M_Age, person.M_Sex,
 			person.M_Number, oldname)
 		if err != nil {
-			log.Println("MySQL 更新失败！", err)
+			logger.Println("MySQL 更新失败！", err)
 		}
 		if err := DeleteFromRedis(oldname); err != nil {
-			log.Println("Redis 更新失败！", err)
+			logger.Println("Redis 更新失败！", err)
 		}
 		if err := InsertToRedis(person); err != nil {
-			log.Println("Redis 更新失败！", err)
+			logger.Println("Redis 更新失败！", err)
 		}
 	}(person, oldname)
 
@@ -242,10 +255,10 @@ func DeletePerson(w http.ResponseWriter, r *http.Request) {
 
 	go func(name string) {
 		if err := DeleteFromMySQL(name); err != nil {
-			log.Println("MySQL 删除失败！", err)
+			logger.Println("MySQL 删除失败！", err)
 		}
 		if err := DeleteFromRedis(name); err != nil {
-			log.Println("Redis 删除失败！", err)
+			logger.Println("Redis 删除失败！", err)
 		}
 	}(name)
 
@@ -256,11 +269,11 @@ func DeletePerson(w http.ResponseWriter, r *http.Request) {
 func ClearPerson(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		if _, err := db.Exec("DELETE FROM employees"); err != nil {
-			log.Println("MySQL 清空失败！", err)
+			logger.Println("MySQL 清空失败！", err)
 		}
 		ctx := context.Background()
 		if err := rdb.FlushDB(ctx).Err(); err != nil {
-			log.Println("Redis 清空失败！", err)
+			logger.Println("Redis 清空失败！", err)
 		}
 	}()
 
@@ -275,8 +288,8 @@ func main() {
 	http.HandleFunc("/delete", DeletePerson)
 	http.HandleFunc("/clear", ClearPerson)
 
-	log.Println("服务器启动，端口：8080")
+	logger.Println("服务器启动，端口：8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal("服务器启动失败！", err)
+		logger.Fatal("服务器启动失败！", err)
 	}
 }
